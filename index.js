@@ -4,6 +4,7 @@ const bodyParser = require('body-parser')
 const fileUpload = require('express-fileupload')
 const { MongoClient } = require('mongodb');
 const axios = require('axios');
+const {parse, stringify, toJSON, fromJSON} = require('flatted');
 // import "reflect-metadata";
 const ImageKit = require('imagekit');
 const ObjectId = require('mongodb').ObjectID
@@ -93,14 +94,15 @@ client.connect(error => {
 
     const userDataCollection = client.db("bandhon_ecommerce").collection("user_data")
     const adminDataCollection = client.db("bandhon_ecommerce").collection("admin_mail")
-
-    // app.get('/get-admin-mail', (req, res) => {
-    //     adminDataCollection.find({})
-    //     .toArray((err, docs) => {
-    //         res.send(docs)
-    //         console.log(err)
-    //     })
-    // })
+    const requestedProductsCollection = client.db("bandhon_ecommerce").collection("requested_products")
+   const pendingOrder= client.db("bandhon_ecommerce").collection("requested_products")
+    app.get('/pending-order', (req, res) => {
+        pendingOrder.find({})
+        .toArray((err, docs) => {
+            res.send(docs)
+            console.log(err)
+        })
+    })
 
     app.get('/get-user-data/id', (req, res) => {
         const id = req.query.id;
@@ -144,10 +146,35 @@ client.connect(error => {
         .catch(err => console.log(err))
     })
 
+    app.post('/upload-profile-image/id', (req, res) => {
+        const data = req.body
+        const image = data.image
+        const uid = data.uid
+        stringify(image)
+        stringify(uid)
+        console.log(data)
+        // const id = req.query.id
+
+        // userDataCollection.find({})
+        // .toArray((err, docs) => {
+        //     const selectedUser = docs.find(user => user._id === id)
+        //     selectedUser.image = data.image
+        // })
+        // console.log(data, id)
+        userDataCollection.updateOne(
+            {_id: ObjectId(uid)},
+            {
+                $set: {image: image}
+            }
+        )
+        .then(result => res.send(result))
+        .then(err => res.send(err))
+    })
+
     app.patch('/add-cart-product/id', (req, res)=>{
         const id = req.query.id;
         const body = req.body;
-        console.log(body, id)
+        // console.log(body, id)
         userDataCollection.updateOne(
             { _id: ObjectId(id) },
             {
@@ -156,6 +183,79 @@ client.connect(error => {
         )
         .then(result =>  res.send(result))
         .catch(err => res.send(err))
+    })
+
+    app.patch('/buy-products/id', (req, res) => {
+        const id = req.query.id
+        const data = req.body
+        // console.log(id, data)
+        userDataCollection.find({})
+        .toArray((err, users) => {
+            const selectedUser = users.find(user => user.uid === data.uid)
+            if(selectedUser.boughtProducts) {
+                userDataCollection.updateOne(
+                    {_id: ObjectId(data.userMDBId)},
+                    {
+                        $set: {boughtProducts: [...selectedUser.boughtProducts ,data]}
+                    }
+                )
+                requestedProductsCollection.insertOne(data)
+                .then(result => {
+                    // res.send(result)
+                    userDataCollection.updateOne(
+                        {_id: ObjectId(data.userMDBId)},
+                        {
+                            $set: {cartProducts: []}
+                        }
+                    )
+                    res.send({success: true})
+                })
+                .catch(err => {
+                    console.log(err)
+                })
+            }
+            else {
+                userDataCollection.updateOne(
+                    {_id: ObjectId(data.userMDBId)},
+                    {
+                        $set: {boughtProducts: [data]}
+                    }
+                )
+                requestedProductsCollection.insertOne(data)
+                .then(result => {
+                    // res.send(result)
+                    userDataCollection.updateOne(
+                        {_id: ObjectId(data.userMDBId)},
+                        {
+                            $set: {cartProducts: []}
+                        }
+                    )
+                    res.send({success: true})
+                })
+                .catch(err => {
+                    console.log(err)
+                })
+            }
+        })
+        // requestedProductsCollection.insertOne(data)
+        // .then(result => {
+        //     console.log(result)
+        // })
+        // .catch(err => {
+        //     console.log(err)
+        // })
+    })
+
+    app.get('/get-profile-data/id', (req, res) => {
+        const id = req.query.id
+        userDataCollection.find({})
+        .toArray((err, docs) => {
+            const selectedUser = docs.find(user => user.uid === id)
+            let newData = {...selectedUser}
+            delete newData.password
+            newData.isSignedIn = true
+            res.send(newData)
+        })
     })
 
     const luckyWinnerCollection = client.db("bandhon_ecommerce").collection("lucky_winner_data")
